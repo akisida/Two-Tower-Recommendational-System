@@ -48,7 +48,7 @@ movie_id → [movie embedding table] → m  ┘
 
 ---
 
-## Experiment 1 — why the first version was *worse than random*
+## Experiment 1 - why the first version was *worse than random*
 
 The first training run scored **below the random baseline** on Recall@50.
 The evaluation code was correct (verified by reproducing it in isolation), so
