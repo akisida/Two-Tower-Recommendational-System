@@ -102,9 +102,9 @@ positive interactions). `n_dim = 32` is the sweet spot here.
 pip install torch pandas kagglehub scikit-learn matplotlib
 ```
 
-- `MovieLens.ipynb` — end-to-end: data prep, model, training, Recall@K, and
+- `MovieLens.ipynb` - end-to-end: data prep, model, training, Recall@K, and
   both experiments.
-- `ndim_sweep.py` — standalone embedding-size sweep.
+- `ndim_sweep.py` - standalone embedding-size sweep.
 
 The dataset is pulled via `kagglehub` (`abhikjha/movielens-100k`, the
 `ml-latest-small` files). The trained model and id↔index mappings are saved
