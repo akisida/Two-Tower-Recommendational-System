@@ -5,8 +5,9 @@ libraries, just embeddings and a dot product. Trained and evaluated on
 MovieLens 100k, with a focus on **diagnosing why the first version failed** rather
 than only reporting a final number.
 
-**Result: Recall@50 ≈ 13%** on a time-based held-out test set
-(random baseline ≈ 0.9%, so ~15× better than chance).
+**Result: Recall@50 ≈ 17%** with logQ sampling-bias correction (~14% without),
+on a time-based held-out test set. Random baseline ≈ 0.9%, so ~19× better than chance.
+All headline numbers are means over 5 random seeds.
 
 ---
 
@@ -18,7 +19,8 @@ than only reporting a final number.
   are negatives).
 - **Data:** MovieLens (`ml-latest-small`) - 610 users × 9724 movies, 100k
   ratings, **1.7% density**.
-- **Two experiments** with real findings (below), not just a trained model.
+- **Four experiments** with real findings (below), including a rigorously-tested
+  negative result - not just a trained model.
 
 ---
 
@@ -48,7 +50,7 @@ movie_id → [movie embedding table] → m  ┘
 
 ---
 
-## Experiment 1 — why the first version was *worse than random*
+## Experiment 1 - why the first version was *worse than random*
 
 The first training run scored **below the random baseline** on Recall@50.
 The evaluation code was correct (verified by reproducing it in isolation), so
@@ -94,6 +96,52 @@ Train loss keeps decreasing with capacity, but test Recall **peaks at 32 and
 then declines** - a textbook overfitting curve on a small dataset (~48k
 positive interactions). `n_dim = 32` is the sweet spot here.
 
+## Experiment 3 - logQ sampling-bias correction (Yi et al. 2019)
+
+The popularity bias from Experiment 1 has a principled fix. In-batch negatives
+are sampled in proportion to item popularity, so popular items are penalised too
+often. The correction subtracts each candidate's log-frequency from its logit:
+
+```
+corrected_logit = raw_logit - log(Q(item))
+```
+
+Since `exp(s - log Q) = exp(s) / Q`, each candidate's contribution to the softmax
+is divided by how often it appears - cancelling the over-sampling of popular
+items. `Q` is just each movie's frequency in the training set (no need for the
+paper's streaming estimator - the catalogue here is small and fixed). The
+correction is applied in **training only**, not at evaluation.
+
+| | Recall@50 (mean of 5 seeds) |
+|---|---|
+| without logQ | ~14% |
+| **with logQ** | **~17%** |
+
++3 pp, well above the seed-to-seed noise (±0.3 pp) - a real effect.
+
+## Experiment 4 - best-model selection (tested, no gain)
+
+Does keeping the checkpoint with the lowest **validation** loss beat using the
+final one? A single run suggested +2.4 pp - but that compared the best checkpoint
+of one run against the last checkpoint of a *different* run (confounded).
+
+Proper test: 5 seeds, validation loss measured every 5000 steps, `best` vs `last`
+compared **within each run**:
+
+| | mean | std |
+|---|---|---|
+| last | 17.26% | 0.28 |
+| best | 17.11% | 0.35 |
+| **delta (best - last)** | **-0.15 pp** | 0.23 |
+
+The delta scatters around zero (per-seed: -0.14, -0.32, -0.47, +0.04, +0.14), so
+best-model selection gives **no reliable improvement here**. At `n_dim = 32` the
+model does not overfit within 200k steps, so there is no better checkpoint to
+catch. The exciting single-run number was noise.
+
+**Takeaway:** a single run can mislead; multiple seeds separate signal from noise,
+and an honestly-reported negative result is worth more than a cherry-picked one.
+
 ---
 
 ## How to run
@@ -102,9 +150,10 @@ positive interactions). `n_dim = 32` is the sweet spot here.
 pip install torch pandas kagglehub scikit-learn matplotlib
 ```
 
-- `MovieLens.ipynb` — end-to-end: data prep, model, training, Recall@K, and
-  both experiments.
-- `ndim_sweep.py` — standalone embedding-size sweep.
+- `MovieLens.ipynb` - end-to-end: data prep, model, training, logQ correction,
+  Recall@K.
+- `ndim_sweep.py` - Experiment 2: embedding-size sweep.
+- `rigor_bestmodel.py` - Experiment 4: 5-seed best-vs-last comparison.
 
 The dataset is pulled via `kagglehub` (`abhikjha/movielens-100k`, the
 `ml-latest-small` files). The trained model and id↔index mappings are saved
@@ -117,7 +166,8 @@ together in `model_and_dicts.pt`.
   accuracy.
 - **Always evaluate against a baseline**, and **reproduce a suspicious result
   in isolation** before blaming the environment.
+- **A single run can mislead** - average over several seeds before trusting a
+  difference, and compare variants *within* the same run.
 - **Limitations:** the model uses only user/movie IDs - no side features
-  (genres, text). The dataset is small, which caps how far embedding size and
-  model capacity can go. Natural next steps: content features, a proper
-  popularity correction, and metrics beyond Recall@K (e.g. NDCG).
+  (genres, text). The dataset is small, which caps model capacity. Natural next
+  steps: content features and metrics beyond Recall@K (e.g. NDCG).
