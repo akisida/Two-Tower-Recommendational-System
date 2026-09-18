@@ -19,8 +19,8 @@ All headline numbers are means over 5 random seeds.
   are negatives).
 - **Data:** MovieLens (`ml-latest-small`) - 610 users × 9724 movies, 100k
   ratings, **1.7% density**.
-- **Four experiments** with real findings (below), including a rigorously-tested
-  negative result - not just a trained model.
+- **Five experiments** with real findings (below), including two rigorously-tested
+  negative results - not just a trained model.
 
 ---
 
@@ -142,6 +142,37 @@ catch. The exciting single-run number was noise.
 **Takeaway:** a single run can mislead; multiple seeds separate signal from noise,
 and an honestly-reported negative result is worth more than a cherry-picked one.
 
+## Experiment 5 - a 2025 refinement that didn't transfer
+
+A recent paper (Khrylchenko et al., *Correcting the LogQ Correction*, 2025) points out
+a flaw in the standard logQ correction: the positive item in the denominator is **not**
+sampled - it is always present with probability 1 - so subtracting `log Q` from it is
+wrong. (Experiment 3's code did exactly that - it subtracted the correction from the
+diagonal too.) The fix undoes the correction on the positive only:
+`scores[i, i] += log_q[i]`.
+
+Paired test (4 seeds, identical init and minibatch stream for both variants, so the
+delta reflects only the fix, not run-to-run noise):
+
+| | mean | std |
+|---|---|---|
+| standard logQ | 17.33% | 0.27 |
+| positive-fixed | 16.84% | 0.54 |
+| **delta (fixed - standard)** | **-0.49 pp** | 0.36 |
+
+3 of 4 seeds are negative - the fix gives **no benefit here, and slightly hurts**. The
+correction is theoretically sound, but the paper's gains were on MovieLens-1M and
+industrial data (larger, more skewed, measured at Recall@100/@1000). On this small
+dataset at Recall@50, the effect doesn't survive the noise.
+
+**Takeaway:** not every SOTA refinement transfers. The large bias correction (logQ,
++3 pp) is what matters; fine-grained refinements on top don't move the needle at this
+scale - and testing that honestly is the point.
+
+*Future work:* the fix is theoretically sound and may pay off with content features or
+on a larger, more skewed dataset - worth re-running both variants once features are
+added, and letting the data decide rather than assuming.
+
 ---
 
 ## How to run
@@ -154,6 +185,7 @@ pip install torch pandas kagglehub scikit-learn matplotlib
   Recall@K.
 - `ndim_sweep.py` - Experiment 2: embedding-size sweep.
 - `rigor_bestmodel.py` - Experiment 4: 5-seed best-vs-last comparison.
+- `logq_positive_fix.py` - Experiment 5: 4-seed paired standard-vs-positive-fixed logQ.
 
 The dataset is pulled via `kagglehub` (`abhikjha/movielens-100k`, the
 `ml-latest-small` files). The trained model and id↔index mappings are saved
