@@ -5,9 +5,10 @@ libraries, just embeddings and a dot product. Trained and evaluated on
 MovieLens 100k, with a focus on **diagnosing why the first version failed** rather
 than only reporting a final number.
 
-**Result: Recall@50 ≈ 17%** with logQ sampling-bias correction (~14% without),
-on a time-based held-out test set. Random baseline ≈ 0.9%, so ~19× better than chance.
-All headline numbers are means over 5 random seeds.
+**Result: Recall@50 ≈ 21%** with genre content features + regularization on the
+item tower (id-only + logQ is ≈ 17%; ≈ 14% without logQ), on a time-based held-out
+test set. Random baseline ≈ 0.9%, so ~23× better than chance. All headline numbers
+are means over multiple random seeds.
 
 ---
 
@@ -19,8 +20,8 @@ All headline numbers are means over 5 random seeds.
   are negatives).
 - **Data:** MovieLens (`ml-latest-small`) - 610 users × 9724 movies, 100k
   ratings, **1.7% density**.
-- **Five experiments** with real findings (below), including two rigorously-tested
-  negative results - not just a trained model.
+- **Six experiments** with real findings (below), including two rigorously-tested
+  negative results and a rigorously-confirmed positive one - not just a trained model.
 
 ---
 
@@ -169,13 +170,65 @@ dataset at Recall@50, the effect doesn't survive the noise.
 +3 pp) is what matters; fine-grained refinements on top don't move the needle at this
 scale - and testing that honestly is the point.
 
-*Future work:* the fix is theoretically sound and may pay off with content features or
-on a larger, more skewed dataset - worth re-running both variants once features are
-added, and letting the data decide rather than assuming.
+This was re-tested once content features were added - see the end of Experiment 6.
 
----
+## Experiment 6 - content features (genres), the first confirmed win
 
-## How to run
+Until now the model used only IDs - it could recommend a movie only if similar
+*users* had liked it. Adding **genres** to the item tower lets it generalise by
+*content*: an unseen movie that is genre-close to a user's likes now scores highly.
+
+Each movie's genres are a **multi-hot** vector (19 genres). The item tower embeds
+the id and the genres separately, concatenates them, and projects back to `d = 32`
+so both towers still output the same dimension for the dot product:
+
+```
+movie_id    → [id embedding]     ─┐
+                                   ├─ concat → dropout → Linear(2d → d) → m
+genres(19)  → Linear(19 → d)     ─┘
+```
+
+Naively adding this **hurt** (14.2% - worse than id-only): the extra parameters
+overfit a small dataset. The fix is regularization - `Dropout(0.3)` on the concat
+and `weight_decay = 1e-4`. So the finding is not "add features" but "add features
+**and** hold capacity in check".
+
+Paired test (3 seeds, same init and minibatch stream per seed, best-by-val
+checkpoint for both variants, so the delta is within-run):
+
+| | mean | std |
+|---|---|---|
+| id-only + logQ | 17.25% | 0.30 |
+| **genres + dropout + weight_decay + logQ** | **20.91%** | 0.56 |
+| **delta (content - id)** | **+3.66 pp** | 0.71 |
+
+All three seeds are positive (+3.17, +3.15, +4.67) and the mean is ~5× the std -
+unlike Experiments 4 and 5, this signal survives the noise. **Content features are
+a real +3.7 pp here, but only with regularization.**
+
+**Takeaway:** the same multi-seed rigor that killed two exciting single-run numbers
+also *confirms* a real one - the method cuts both ways, which is the point.
+
+### Revisiting Experiment 5 with features
+
+Experiment 5 left an open question: the logQ positive-fix didn't help on the id-only
+model, but might it pay off *with* content features? Re-ran the same paired test, this
+time with both variants on the content+regularization model (3 seeds):
+
+| | mean | std |
+|---|---|---|
+| standard logQ | 20.91% | 0.56 |
+| positive-fixed | 20.67% | 0.57 |
+| **delta (fixed - standard)** | **-0.24 pp** | 0.04 |
+
+The hypothesis is refuted: the fix still doesn't help. But note the **std of 0.04** -
+all three seeds land in a tight band (-0.29, -0.22, -0.20). On the id-only model this
+delta was -0.49 ± 0.36 (lost in noise); the paired design plus the more stable content
+model resolves it precisely as a small, *consistent* negative. The positive-in-denominator
+bias is simply too small to matter at this scale, and features don't change that.
+
+**Takeaway:** the project's pattern holds on every model tried - the big correction (logQ)
+and content features move the needle (+3-4 pp each); fine-grained refinements don't.
 
 ```bash
 pip install torch pandas kagglehub scikit-learn matplotlib
@@ -186,6 +239,8 @@ pip install torch pandas kagglehub scikit-learn matplotlib
 - `ndim_sweep.py` - Experiment 2: embedding-size sweep.
 - `rigor_bestmodel.py` - Experiment 4: 5-seed best-vs-last comparison.
 - `logq_positive_fix.py` - Experiment 5: 4-seed paired standard-vs-positive-fixed logQ.
+- `genres_multiseed.py` - Experiment 6: 3-seed paired id-only-vs-genres+regularization.
+- `posfix_features_multiseed.py` - Experiment 5 revisited: positive-fix on the content model.
 
 The dataset is pulled via `kagglehub` (`abhikjha/movielens-100k`, the
 `ml-latest-small` files). The trained model and id↔index mappings are saved
@@ -200,6 +255,9 @@ together in `model_and_dicts.pt`.
   in isolation** before blaming the environment.
 - **A single run can mislead** - average over several seeds before trusting a
   difference, and compare variants *within* the same run.
-- **Limitations:** the model uses only user/movie IDs - no side features
-  (genres, text). The dataset is small, which caps model capacity. Natural next
-  steps: content features and metrics beyond Recall@K (e.g. NDCG).
+- **Content features help, but only with regularization** - genres added +3.7 pp,
+  yet adding them naively (no dropout/weight decay) *hurt*, because extra capacity
+  overfits a small dataset.
+- **Limitations:** features are still only genres (no text/tags); the dataset is
+  small, which caps capacity. Natural next steps: richer side features, metrics
+  beyond Recall@K (e.g. NDCG), and sequence models (attention / SASRec).
