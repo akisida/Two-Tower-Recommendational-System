@@ -49,6 +49,17 @@ movie_id → [movie embedding table] → m  ┘
   is the positive pair - i.e. softmax with in-batch negatives.
 - Optimizer: Adam, lr 1e-3, batch size 256.
 
+**Metrics.** Retrieval is scored two ways, both by ranking the held-out positives
+against the un-seen catalogue:
+- **Recall@50** - did the positive land in the top 50? Binary, position-blind.
+- **NDCG@50** - same, but position-weighted: a hit at rank 1 counts 1.0, at rank 50
+  only ~0.18 (discount `1/log2(rank+1)`), normalised by the ideal ranking.
+
+On the best (genres + regularization) model, over 3 seeds:
+`Recall@50 = 20.9% ± 0.6`, `NDCG@50 = 8.6% ± 0.25`. NDCG being much lower than Recall
+means the model *finds* relevant items but ranks them deep in the list rather than at
+the top - retrieval is solid, in-list ordering is the weak spot. Recall alone hides this.
+
 ---
 
 ## Experiment 1 - why the first version was *worse than random*
@@ -241,6 +252,7 @@ pip install torch pandas kagglehub scikit-learn matplotlib
 - `logq_positive_fix.py` - Experiment 5: 4-seed paired standard-vs-positive-fixed logQ.
 - `genres_multiseed.py` - Experiment 6: 3-seed paired id-only-vs-genres+regularization.
 - `posfix_features_multiseed.py` - Experiment 5 revisited: positive-fix on the content model.
+- `ndcg_multiseed.py` - 3-seed Recall@50 and NDCG@50 on the content model.
 
 The dataset is pulled via `kagglehub` (`abhikjha/movielens-100k`, the
 `ml-latest-small` files). The trained model and id↔index mappings are saved
@@ -258,6 +270,9 @@ together in `model_and_dicts.pt`.
 - **Content features help, but only with regularization** - genres added +3.7 pp,
   yet adding them naively (no dropout/weight decay) *hurt*, because extra capacity
   overfits a small dataset.
+- **Recall and NDCG measure different things** - Recall@50 asks "is the positive in
+  the top 50", NDCG@50 asks "how high". The gap between them (21% vs 8.6%) is itself a
+  finding: retrieval works, in-list ranking is weak.
 - **Limitations:** features are still only genres (no text/tags); the dataset is
-  small, which caps capacity. Natural next steps: richer side features, metrics
-  beyond Recall@K (e.g. NDCG), and sequence models (attention / SASRec).
+  small, which caps capacity. Natural next steps: richer side features and sequence
+  models (attention / SASRec).
