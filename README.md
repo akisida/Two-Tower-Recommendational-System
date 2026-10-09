@@ -241,6 +241,24 @@ bias is simply too small to matter at this scale, and features don't change that
 **Takeaway:** the project's pattern holds on every model tried - the big correction (logQ)
 and content features move the needle (+3-4 pp each); fine-grained refinements don't.
 
+## Follow-up: SASRec - a sequence model, honestly compared
+
+A self-attentive sequential recommender (**SASRec**) built from scratch as a follow-up -
+the same causal self-attention as a GPT, but the tokens are movies and the task is
+"predict the next like". It is compared against the two-tower **under one matched
+protocol** (leave-one-out HR@50 / NDCG@50, best-by-val, 3 seeds), because the headline
+numbers above use an 80/10/10 multi-target split and are *not* comparable to a
+single-target leave-one-out metric.
+
+At a context window of 50 the two-tower wins (HR@50 15.84 ± 0.43 vs 11.84 ± 1.05), but a
+`max_len` sweep shows SASRec was **starved of context**: HR@50 rises 8.3 -> 11.8 -> 13.4
+as the window grows 20 -> 50 -> 100, closing most of the gap. The honest finding is not
+"a transformer loses on small data" but "SASRec is context-length-sensitive, and a plain
+two-tower is a strong, remarkably stable baseline that is hard to beat cheaply on ~24k
+interactions". Full write-up, notebook and scripts in **[`sasrec/`](sasrec/)**.
+
+## How to run
+
 ```bash
 pip install torch pandas kagglehub scikit-learn matplotlib
 ```
@@ -273,6 +291,10 @@ together in `model_and_dicts.pt`.
 - **Recall and NDCG measure different things** - Recall@50 asks "is the positive in
   the top 50", NDCG@50 asks "how high". The gap between them (21% vs 8.6%) is itself a
   finding: retrieval works, in-list ranking is weak.
+- **Compare like with like.** A headline number means nothing across different eval
+  protocols - a sequence model (SASRec) is built and compared under one matched protocol
+  in [`sasrec/`](sasrec/), where a `max_len` sweep also shows how a too-short conclusion
+  can be an artifact of a hyperparameter.
 - **Limitations:** features are still only genres (no text/tags); the dataset is
-  small, which caps capacity. Natural next steps: richer side features and sequence
-  models (attention / SASRec).
+  small, which caps capacity. Natural next steps: richer side features and larger data
+  (where the sequence model should have more room to help).
