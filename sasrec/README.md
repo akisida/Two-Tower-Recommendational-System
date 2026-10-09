@@ -6,9 +6,10 @@ movies and the task is *predict the next movie a user will like*. Built as a dir
 follow-up to the [two-tower retrieval model](../README.md) in this repo, and compared
 against it **under one matched protocol** rather than quoting two incomparable numbers.
 
-**Headline (honest):** on this small dataset a plain two-tower is a *very strong,
-very stable* baseline. SASRec is **sensitive to context length** - too short a history
-window and it loses; give it a longer window and it closes most of the gap.
+**Headline:** it depends on **scale**. On `ml-small` (~24k interactions) a plain two-tower
+wins (HR@50 15.8 vs 11.8). On **MovieLens-1M** (~575k interactions) SASRec **doubles** it
+(HR@50 41.2 vs 20.5). The honest result is a *crossover* - a static model wins on small
+data, a sequence model wins decisively once there's enough history to learn from.
 
 ---
 
@@ -84,6 +85,26 @@ and loses, with a longer window it nearly matches a two-tower that is itself a s
 remarkably stable baseline.** The median user here has 38 likes, so `max_len=50` truncated
 a large fraction of users; lengthening the window recovers that signal.
 
+## Experiment C - scale (MovieLens-1M): the crossover
+
+The real question behind all of this: *do sequence models need scale?* Re-running the
+exact same matched protocol on **MovieLens-1M** (6,035 users, ~575k positive
+interactions - ~25× `ml-small`), with scaled-up configs (SASRec `d=128`, `max_len=200`;
+two-tower `d=64`):
+
+| dataset | two-tower HR@50 | SASRec HR@50 | winner |
+|---|---|---|---|
+| ml-small (~24k interactions) | **15.84 ± 0.43** | 11.84 ± 1.05 | two-tower |
+| **ML-1M (~575k interactions)** | 20.54 ± 0.25 | **41.19 ± 0.10** | **SASRec, ~2×** |
+
+On ML-1M SASRec **doubles** the two-tower (HR@50 41.2 vs 20.5; NDCG@50 15.5 vs 6.1), and
+it is now *more* stable than the two-tower (± 0.10 vs ± 0.25) - the exact opposite of the
+small-data regime, where it was the noisy one (± 1.05). `compare_loo_ml1m.py`.
+
+**The headline finding is the crossover:** a static two-tower wins on small data, a
+sequence model wins - decisively - once there is enough history to learn from. Not "which
+model is better" but "which model for how much data".
+
 ## What I learned
 
 - **Compare like with like.** A single headline number is meaningless across different
@@ -94,6 +115,8 @@ a large fraction of users; lengthening the window recovers that signal.
   data disagreed.
 - A simple, well-tuned baseline is hard to beat cheaply on small data - a result worth
   stating plainly rather than tuning away.
+- **Model choice is data-dependent.** The same two models swap places between ~24k and
+  ~575k interactions. "SASRec vs two-tower" has no context-free answer; the scale does.
 
 ## Files
 

@@ -250,12 +250,11 @@ protocol** (leave-one-out HR@50 / NDCG@50, best-by-val, 3 seeds), because the he
 numbers above use an 80/10/10 multi-target split and are *not* comparable to a
 single-target leave-one-out metric.
 
-At a context window of 50 the two-tower wins (HR@50 15.84 ± 0.43 vs 11.84 ± 1.05), but a
-`max_len` sweep shows SASRec was **starved of context**: HR@50 rises 8.3 -> 11.8 -> 13.4
-as the window grows 20 -> 50 -> 100, closing most of the gap. The honest finding is not
-"a transformer loses on small data" but "SASRec is context-length-sensitive, and a plain
-two-tower is a strong, remarkably stable baseline that is hard to beat cheaply on ~24k
-interactions". Full write-up, notebook and scripts in **[`sasrec/`](sasrec/)**.
+The headline finding is a **crossover with data scale**: on `ml-small` (~24k interactions)
+the two-tower wins (HR@50 15.8 vs 11.8), but on **MovieLens-1M** (~575k interactions)
+SASRec **doubles** it (HR@50 41.2 vs 20.5). A static model wins on small data, a sequence
+model wins decisively once there's enough history - "which model" has no answer without
+"for how much data". Full write-up, notebook and scripts in **[`sasrec/`](sasrec/)**.
 
 ## How to run
 
